@@ -1,0 +1,397 @@
+import { useState, useEffect, useRef } from “react”;
+
+const DEFAULT_LIBRARY = {
+rules: [
+{ id: “r1”, text: “Never risk more than 1% of capital on a single trade.”, rationale: “A single bad trade should never threaten the account. Keeping risk small ensures I can stay in the game long enough to be consistently profitable.” },
+{ id: “r2”, text: “Always set a stop-loss before entering any position.”, rationale: “Without a predefined exit, emotion takes over. The stop-loss is decided with a clear head — before I have skin in the game.” },
+{ id: “r3”, text: “Do not trade the first 15 minutes after market open.”, rationale: “The open is driven by overnight orders, gaps, and reactive emotion. Letting the dust settle reveals the real direction of the day.” },
+{ id: “r4”, text: “Stop trading after 3 consecutive losses today.”, rationale: “Three losses in a row is a signal — either the market is not cooperating with my strategy, or my mindset has deteriorated. Either way, stepping back protects the account.” },
+{ id: “r5”, text: “Never chase a trade that has already moved significantly.”, rationale: “Chasing means entering late, with poor risk/reward. The next opportunity is always around the corner. Discipline here is what separates traders from gamblers.” },
+{ id: “r6”, text: “Only take trades that align with the daily trend direction.”, rationale: “Trading against the trend is fighting the tape. The trend is the path of least resistance — go with it, not against it.” },
+{ id: “r7”, text: “Exit when target is hit — do not move the goalposts.”, rationale: “Greed causes traders to hold winners too long and turn them into losers. A target set with a clear head is more trustworthy than the in-the-moment impulse to hold for more.” },
+{ id: “r8”, text: “No revenge trading. A loss is just information.”, rationale: “Revenge trading is emotional, impulsive, and almost always makes things worse. Each loss is data — not a personal attack to be avenged.” },
+{ id: “r9”, text: “Stay out when news events are pending.”, rationale: “News creates unpredictable, violent moves. The edge I trade on disappears in a news-driven market. Sitting out is a valid and smart position.” },
+{ id: “r10”, text: “My daily max loss is fixed. Honor it without exception.”, rationale: “The daily max loss is not a suggestion — it is the line between a bad day and a catastrophic one. Honoring it is what allows me to come back tomorrow.” },
+],
+goals: [
+{ id: “g1”, text: “Focus on process, not P&L. Outcomes follow good decisions.”, rationale: “Fixating on P&L creates anxiety and short-term thinking. If I execute my process well consistently, the results take care of themselves over time.” },
+{ id: “g2”, text: “Be patient. The best trade is sometimes no trade.”, rationale: “Overtrading is one of the most common causes of account erosion. Waiting for high-quality setups is a skill, not passivity.” },
+{ id: “g3”, text: “Stay present. One trade at a time, one moment at a time.”, rationale: “The mind drifts to yesterday’s losses or tomorrow’s hopes. The only trade that matters is the one in front of me right now.” },
+{ id: “g4”, text: “Build consistency before scaling size.”, rationale: “Scaling up a losing or inconsistent strategy just accelerates the losses. Consistency at small size is proof of concept — size comes after.” },
+{ id: “g5”, text: “Protect my capital. It is my tool, my livelihood.”, rationale: “Capital is not just money — it is the instrument of the craft. A carpenter protects their tools. I protect mine.” },
+{ id: “g6”, text: “Learn from every trade, win or lose.”, rationale: “Winning trades can mask bad decisions; losing trades can be perfectly executed. What matters is the quality of the decision, not just the outcome.” },
+{ id: “g7”, text: “My emotional state is part of my edge. Manage it actively.”, rationale: “Emotional self-awareness is a competitive advantage. Most traders ignore it. I treat my psychology as a variable to be managed, not a weakness to be hidden.” },
+{ id: “g8”, text: “Long-term thinking beats short-term reactions.”, rationale: “Any single day, week, or trade is nearly meaningless in isolation. The goal is to be profitable over hundreds of trades and months — not to win today at all costs.” },
+],
+};
+
+const MARKET_SENTIMENTS = [
+{ id: “strongly_bearish”, label: “Strongly Bearish”, icon: “📉”, color: “#ef4444” },
+{ id: “bearish”, label: “Bearish”, icon: “🐻”, color: “#f97316” },
+{ id: “neutral”, label: “Neutral”, icon: “⚖️”, color: “#94a3b8” },
+{ id: “bullish”, label: “Bullish”, icon: “🐂”, color: “#22c55e” },
+{ id: “strongly_bullish”, label: “Strongly Bullish”, icon: “📈”, color: “#10b981” },
+{ id: “uncertain”, label: “Uncertain”, icon: “🌫️”, color: “#a855f7” },
+{ id: “volatile”, label: “Volatile”, icon: “⚡”, color: “#eab308” },
+];
+
+const MOODS = [
+{ id: “focused”, label: “Focused”, icon: “🎯” },
+{ id: “confident”, label: “Confident”, icon: “💪” },
+{ id: “calm”, label: “Calm”, icon: “🧘” },
+{ id: “energized”, label: “Energized”, icon: “⚡” },
+{ id: “cautious”, label: “Cautious”, icon: “🛡️” },
+{ id: “anxious”, label: “Anxious”, icon: “😰” },
+{ id: “impatient”, label: “Impatient”, icon: “⏳” },
+{ id: “distracted”, label: “Distracted”, icon: “🌀” },
+{ id: “fearful”, label: “Fearful”, icon: “😨” },
+{ id: “greedy”, label: “Greedy”, icon: “💰” },
+{ id: “disciplined”, label: “Disciplined”, icon: “📐” },
+{ id: “tired”, label: “Tired”, icon: “😴” },
+];
+
+const MINDSETS = [
+{ id: “growth”, label: “Growth Mode”, icon: “🌱” },
+{ id: “preservation”, label: “Capital Preservation”, icon: “🔒” },
+{ id: “aggressive”, label: “Aggressive”, icon: “🔥” },
+{ id: “selective”, label: “Selective / Sniper”, icon: “🎯” },
+{ id: “observing”, label: “Observing Only”, icon: “👁️” },
+{ id: “recovery”, label: “Recovery Mode”, icon: “🩹” },
+{ id: “testing”, label: “Testing a Strategy”, icon: “🧪” },
+{ id: “routine”, label: “Routine Execution”, icon: “⚙️” },
+];
+
+const lsGet = (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } };
+const lsSet = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const formatDate = (iso) => new Date(iso + “T12:00:00”).toLocaleDateString(“en-US”, { weekday: “long”, month: “long”, day: “numeric”, year: “numeric” });
+
+export default function App() {
+const [screen, setScreen] = useState(“loading”);
+const [library, setLibrary] = useState(DEFAULT_LIBRARY);
+const [selected, setSelected] = useState({ rules: [], goals: [] });
+const [reminderIdx, setReminderIdx] = useState(0);
+const [allReminders, setAllReminders] = useState([]);
+const [journalData, setJournalData] = useState({ thoughts: “”, sentiment: null, moods: [], mindsets: [] });
+const [todayEntry, setTodayEntry] = useState(null);
+const [history, setHistory] = useState([]);
+const [historyDetail, setHistoryDetail] = useState(null);
+const [newItemText, setNewItemText] = useState(””);
+const [newItemRationale, setNewItemRationale] = useState(””);
+const [newItemType, setNewItemType] = useState(“rules”);
+const [addingItem, setAddingItem] = useState(false);
+const [expandedItemId, setExpandedItemId] = useState(null);
+const [editingRationale, setEditingRationale] = useState({});
+const [saveFlash, setSaveFlash] = useState(false);
+const [exportText, setExportText] = useState(””);
+const [exportFormat, setExportFormat] = useState(“text”);
+const [copyFlash, setCopyFlash] = useState(false);
+const exportRef = useRef(null);
+
+useEffect(() => {
+const lib = lsGet(“tr_library”);
+const sel = lsGet(“tr_selected”);
+const hist = lsGet(“tr_history”);
+const entry = lsGet(“tr_entry_” + todayKey());
+if (lib) setLibrary(lib);
+if (sel) setSelected(sel);
+if (hist) setHistory(hist);
+if (entry) { setTodayEntry(entry); setJournalData(entry); }
+setScreen(“home”);
+}, []);
+
+const persistLibrary = (l) => { setLibrary(l); lsSet(“tr_library”, l); };
+const persistSelected = (s) => { setSelected(s); lsSet(“tr_selected”, s); };
+
+const startReminders = () => {
+const items = [
+…selected.rules.map(id => { const r = library.rules.find(r => r.id === id); return r ? { type: “rule”, …r } : null; }).filter(Boolean),
+…selected.goals.map(id => { const g = library.goals.find(g => g.id === id); return g ? { type: “goal”, …g } : null; }).filter(Boolean),
+];
+if (items.length === 0) { setScreen(“library”); return; }
+setAllReminders(items); setReminderIdx(0); setScreen(“reminders”);
+};
+
+const saveJournal = () => {
+const entry = { …journalData, date: todayKey() };
+setTodayEntry(entry);
+lsSet(“tr_entry_” + todayKey(), entry);
+const newHist = [todayKey(), …history.filter(d => d !== todayKey())].slice(0, 60);
+setHistory(newHist); lsSet(“tr_history”, newHist);
+setSaveFlash(true);
+setTimeout(() => { setSaveFlash(false); setScreen(“home”); }, 1200);
+};
+
+const toggleSelected = (type, id) => {
+const next = selected[type].includes(id) ? selected[type].filter(x => x !== id) : […selected[type], id];
+persistSelected({ …selected, [type]: next });
+};
+
+const addLibraryItem = () => {
+if (!newItemText.trim()) return;
+const id = newItemType[0] + Date.now();
+persistLibrary({ …library, [newItemType]: […library[newItemType], { id, text: newItemText.trim(), rationale: newItemRationale.trim() }] });
+setNewItemText(””); setNewItemRationale(””); setAddingItem(false);
+};
+
+const updateRationale = (type, id, value) => {
+persistLibrary({ …library, [type]: library[type].map(item => item.id === id ? { …item, rationale: value } : item) });
+};
+
+const removeLibraryItem = (type, id) => {
+persistLibrary({ …library, [type]: library[type].filter(i => i.id !== id) });
+if (selected[type].includes(id)) persistSelected({ …selected, [type]: selected[type].filter(x => x !== id) });
+};
+
+const totalSelected = selected.rules.length + selected.goals.length;
+
+const buildExportText = () => {
+const lines = [“═══════════════════════════════════════”, “  TRADING RITUAL — JOURNAL EXPORT”,
+`  Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`,
+`  Total entries: ${history.length}`, “═══════════════════════════════════════”, “”];
+[…history].sort().forEach(dk => {
+const e = lsGet(“tr_entry_” + dk); if (!e) return;
+const sent = MARKET_SENTIMENTS.find(x => x.id === e.sentiment);
+const moods = (e.moods || []).map(id => MOODS.find(x => x.id === id)?.label).filter(Boolean);
+const minds = (e.mindsets || []).map(id => MINDSETS.find(x => x.id === id)?.label).filter(Boolean);
+lines.push(“───────────────────────────────────────”, formatDate(dk), “”);
+if (sent) lines.push(`Market Sentiment: ${sent.icon} ${sent.label}`);
+if (moods.length) lines.push(`Moods: ${moods.join(", ")}`);
+if (minds.length) lines.push(`Mindsets: ${minds.join(", ")}`);
+if (e.thoughts) lines.push(””, “Thoughts:”, `"${e.thoughts}"`);
+lines.push(””);
+});
+lines.push(“═══════════════════════════════════════”);
+return lines.join(”\n”);
+};
+
+const buildExportCSV = () => {
+const rows = [[“Date”,“Market Sentiment”,“Moods”,“Mindsets”,“Thoughts”]];
+[…history].sort().forEach(dk => {
+const e = lsGet(“tr_entry_” + dk); if (!e) return;
+rows.push([dk, MARKET_SENTIMENTS.find(x => x.id === e.sentiment)?.label || “”,
+(e.moods||[]).map(id => MOODS.find(x=>x.id===id)?.label).filter(Boolean).join(”; “),
+(e.mindsets||[]).map(id => MINDSETS.find(x=>x.id===id)?.label).filter(Boolean).join(”; “),
+`"${(e.thoughts||"").replace(/"/g,'""')}"`]);
+});
+return rows.map(r => r.map(c => typeof c===“string”&&c.includes(”,”)&&!c.startsWith(’”’) ? `"${c}"` : c).join(”,”)).join(”\n”);
+};
+
+const openExport = (fmt) => { setExportFormat(fmt); setExportText(fmt===“csv” ? buildExportCSV() : buildExportText()); setScreen(“export”); };
+
+const copyToClipboard = async () => {
+try { await navigator.clipboard.writeText(exportText); setCopyFlash(true); setTimeout(()=>setCopyFlash(false),2000); }
+catch { if(exportRef.current){exportRef.current.select();document.execCommand(“copy”);setCopyFlash(true);setTimeout(()=>setCopyFlash(false),2000);} }
+};
+
+const downloadFile = () => {
+const blob = new Blob([exportText],{type:“text/plain”});
+const url = URL.createObjectURL(blob);
+const a = document.createElement(“a”); a.href=url; a.download=`trading-ritual-export.${exportFormat==="csv"?"csv":"txt"}`; a.click();
+URL.revokeObjectURL(url);
+};
+
+const C = {
+root:{ minHeight:“100vh”, background:”#040d1a”, fontFamily:”‘Georgia’,‘Times New Roman’,serif”, color:”#e2e8f0”, display:“flex”, alignItems:“stretch”, justifyContent:“center”, backgroundImage:“radial-gradient(ellipse at 20% 20%,rgba(245,158,11,0.04) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(129,140,248,0.04) 0%,transparent 60%)” },
+page:{ width:“100%”, maxWidth:680, minHeight:“100vh”, padding:“28px 20px 20px”, display:“flex”, flexDirection:“column”, margin:“0 auto” },
+topBar:{ display:“flex”, alignItems:“center”, justifyContent:“space-between”, marginBottom:16 },
+appTitle:{ fontFamily:”‘Georgia’,serif”, fontSize:“clamp(20px,5vw,28px)”, fontWeight:“normal”, letterSpacing:“0.25em”, color:”#f8fafc”, margin:“0 0 6px” },
+dateLabel:{ fontFamily:“monospace”, fontSize:13, color:”#475569”, letterSpacing:“0.05em”, margin:0 },
+secTitle:{ fontFamily:“monospace”, fontSize:12, letterSpacing:“0.12em”, textTransform:“uppercase”, color:”#64748b”, margin:“0 0 4px” },
+label:{ fontFamily:“monospace”, fontSize:12, letterSpacing:“0.08em”, textTransform:“uppercase”, color:”#64748b”, margin:“0 0 10px” },
+caption:{ fontFamily:“monospace”, fontSize:12, color:”#475569”, margin:0 },
+body:{ fontFamily:”‘Georgia’,serif”, fontSize:15, color:”#cbd5e1”, margin:0, lineHeight:1.5 },
+chip:{ display:“inline-flex”, alignItems:“center”, gap:5, padding:“4px 10px”, borderRadius:20, fontSize:13, fontFamily:“monospace”, letterSpacing:“0.03em” },
+moodChip:{ padding:“8px 14px”, borderRadius:10, border:“1.5px solid transparent”, cursor:“pointer”, fontFamily:“monospace”, fontSize:13, transition:“all 0.15s ease”, background:”#1e293b”, color:”#94a3b8” },
+primary:{ width:“100%”, padding:“16px”, borderRadius:12, border:“none”, background:“linear-gradient(135deg,#d97706,#f59e0b)”, color:”#0c1117”, fontSize:16, fontFamily:”‘Georgia’,serif”, fontWeight:“bold”, cursor:“pointer”, letterSpacing:“0.03em”, boxShadow:“0 4px 20px rgba(245,158,11,0.25)” },
+secondary:{ width:“100%”, padding:“14px”, borderRadius:12, border:“1.5px solid #334155”, background:“transparent”, color:”#94a3b8”, fontSize:15, fontFamily:”‘Georgia’,serif”, cursor:“pointer” },
+ghost:{ background:“none”, border:“none”, color:”#64748b”, cursor:“pointer”, fontSize:14, fontFamily:“monospace”, padding:“4px 0”, letterSpacing:“0.03em” },
+bigStart:{ width:“100%”, padding:“20px”, borderRadius:14, border:“none”, background:“linear-gradient(135deg,#d97706,#f59e0b)”, color:”#0c1117”, fontSize:“clamp(16px,3vw,20px)”, fontFamily:”‘Georgia’,serif”, fontWeight:“bold”, cursor:“pointer”, letterSpacing:“0.04em”, boxShadow:“0 6px 30px rgba(245,158,11,0.3)” },
+tile:{ background:”#0d1b2e”, border:“1px solid #1e3a5f”, borderRadius:14, padding:“18px 14px”, cursor:“pointer”, display:“flex”, flexDirection:“column”, alignItems:“flex-start”, gap:4, textAlign:“left” },
+tileLabel:{ fontFamily:“monospace”, fontSize:13, color:”#cbd5e1”, letterSpacing:“0.04em”, textTransform:“uppercase” },
+textarea:{ width:“100%”, background:”#0d1b2e”, border:“1.5px solid #1e3a5f”, borderRadius:10, color:”#e2e8f0”, fontFamily:”‘Georgia’,serif”, fontSize:15, padding:“12px 14px”, resize:“vertical”, outline:“none”, lineHeight:1.6, boxSizing:“border-box” },
+doneCard:{ background:“rgba(34,197,94,0.05)”, border:“1px solid rgba(34,197,94,0.2)”, borderRadius:14, padding:“16px” },
+startCard:{ background:“rgba(245,158,11,0.05)”, border:“1px solid rgba(245,158,11,0.2)”, borderRadius:14, padding:“20px” },
+histRow:{ width:“100%”, background:“none”, border:“none”, borderBottom:“1px solid #1e293b”, padding:“14px 4px”, cursor:“pointer”, display:“flex”, justifyContent:“space-between”, alignItems:“center”, textAlign:“left” },
+};
+
+if (screen===“loading”) return <div style={C.root}><div style={{display:“flex”,alignItems:“center”,justifyContent:“center”,height:“100vh”,flexDirection:“column”,gap:16}}><div style={{fontSize:48,color:”#f59e0b”,textShadow:“0 0 20px rgba(245,158,11,0.4)”}}>◈</div><p style={{fontFamily:“monospace”,fontSize:12,color:”#475569”,letterSpacing:4}}>LOADING…</p></div></div>;
+
+if (screen===“reminders”) {
+const item = allReminders[reminderIdx];
+const isLast = reminderIdx === allReminders.length-1;
+return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setScreen(“home”)}>← Back</button><span style={C.caption}>{reminderIdx+1} / {allReminders.length}</span></div>
+<div style={{height:3,background:”#1e293b”,borderRadius:2,margin:“8px 0 32px”}}><div style={{height:“100%”,width:`${(reminderIdx+1)/allReminders.length*100}%`,background:“linear-gradient(90deg,#f59e0b,#fbbf24)”,borderRadius:2,transition:“width 0.4s ease”}} /></div>
+<div style={{flex:1,display:“flex”,flexDirection:“column”,justifyContent:“center”,padding:“0 8px”}}>
+<div style={{…C.chip,alignSelf:“flex-start”,marginBottom:24,background:item.type===“rule”?“rgba(239,68,68,0.15)”:“rgba(34,197,94,0.15)”,color:item.type===“rule”?”#fca5a5”:”#86efac”}}>{item.type===“rule”?“⚖ RULE”:“★ GOAL”}</div>
+<p style={{fontFamily:”‘Georgia’,serif”,fontSize:“clamp(20px,4vw,28px)”,color:”#f8fafc”,lineHeight:1.55,fontStyle:“italic”,textAlign:“center”,padding:“0 16px”}}>”{item.text}”</p>
+{item.rationale && <div style={{marginTop:28,padding:“16px 20px”,background:“rgba(255,255,255,0.03)”,borderLeft:“2px solid #334155”,borderRadius:“0 8px 8px 0”}}><p style={{…C.label,marginBottom:6,color:”#475569”}}>Why this matters</p><p style={{fontFamily:”‘Georgia’,serif”,fontSize:15,color:”#64748b”,lineHeight:1.65}}>{item.rationale}</p></div>}
+</div>
+<div style={{padding:“24px 0 8px”,display:“flex”,gap:12}}>
+{reminderIdx>0 && <button style={{…C.secondary,flex:1}} onClick={()=>setReminderIdx(i=>i-1)}>← Previous</button>}
+<button style={{…C.primary,flex:2}} onClick={()=>isLast?setScreen(“journal”):setReminderIdx(i=>i+1)}>{isLast?“Done — Write Journal →”:“Next →”}</button>
+</div>
+</div></div>
+);
+}
+
+if (screen===“journal”) return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setScreen(“home”)}>← Home</button><span style={{...C.secTitle,fontSize:14}}>Daily Journal</span><span style={C.caption}>{formatDate(todayKey()).split(”,”)[0]}</span></div>
+<div style={{overflowY:“auto”,flex:1,display:“flex”,flexDirection:“column”,gap:28,paddingBottom:16}}>
+<div><p style={C.label}>💭 My thoughts on trading today</p><textarea style={C.textarea} placeholder=“How do I feel stepping into today’s session?…” value={journalData.thoughts} onChange={e=>setJournalData(d=>({…d,thoughts:e.target.value}))} rows={5} /></div>
+<div><p style={C.label}>📊 How I read the market today</p>
+<div style={{display:“flex”,flexWrap:“wrap”,gap:10}}>
+{MARKET_SENTIMENTS.map(s2=><button key={s2.id} style={{…C.moodChip,borderColor:journalData.sentiment===s2.id?s2.color:“transparent”,background:journalData.sentiment===s2.id?s2.color+“22”:”#1e293b”,color:journalData.sentiment===s2.id?s2.color:”#94a3b8”}} onClick={()=>setJournalData(d=>({…d,sentiment:d.sentiment===s2.id?null:s2.id}))}>{s2.icon} {s2.label}</button>)}
+</div>
+</div>
+<div><p style={C.label}>🎭 My mood(s) right now</p>
+<div style={{display:“flex”,flexWrap:“wrap”,gap:10}}>
+{MOODS.map(m=><button key={m.id} style={{…C.moodChip,borderColor:journalData.moods.includes(m.id)?”#f59e0b”:“transparent”,background:journalData.moods.includes(m.id)?“rgba(245,158,11,0.15)”:”#1e293b”,color:journalData.moods.includes(m.id)?”#fbbf24”:”#94a3b8”}} onClick={()=>setJournalData(d=>({…d,moods:d.moods.includes(m.id)?d.moods.filter(x=>x!==m.id):[…d.moods,m.id]}))}>{m.icon} {m.label}</button>)}
+</div>
+</div>
+<div><p style={C.label}>🧠 My trading mindset today</p>
+<div style={{display:“flex”,flexWrap:“wrap”,gap:10}}>
+{MINDSETS.map(m=><button key={m.id} style={{…C.moodChip,borderColor:journalData.mindsets.includes(m.id)?”#818cf8”:“transparent”,background:journalData.mindsets.includes(m.id)?“rgba(129,140,248,0.15)”:”#1e293b”,color:journalData.mindsets.includes(m.id)?”#a5b4fc”:”#94a3b8”}} onClick={()=>setJournalData(d=>({…d,mindsets:d.mindsets.includes(m.id)?d.mindsets.filter(x=>x!==m.id):[…d.mindsets,m.id]}))}>{m.icon} {m.label}</button>)}
+</div>
+</div>
+</div>
+<button style={{...C.primary,marginTop:16}} onClick={saveJournal}>{saveFlash?“✓ Saved!”:“Save Journal Entry”}</button>
+</div></div>
+);
+
+if (screen===“library”) return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setScreen(“home”)}>← Back</button><span style={{...C.secTitle,fontSize:14}}>My Rules & Goals</span><button style={C.ghost} onClick={()=>setAddingItem(true)}>+ Add</button></div>
+{addingItem && (
+<div style={{background:”#1e293b”,borderRadius:12,padding:16,marginBottom:16}}>
+<div style={{display:“flex”,gap:8,marginBottom:12}}>
+{[“rules”,“goals”].map(t=><button key={t} style={{…C.moodChip,flex:1,borderColor:newItemType===t?”#f59e0b”:“transparent”,color:newItemType===t?”#fbbf24”:”#64748b”}} onClick={()=>setNewItemType(t)}>{t===“rules”?“⚖ Rule”:“★ Goal”}</button>)}
+</div>
+<p style={{...C.label,marginBottom:6}}>Rule / Goal</p>
+<textarea style={{…C.textarea,marginBottom:12}} placeholder=“Enter your rule or goal…” value={newItemText} onChange={e=>setNewItemText(e.target.value)} rows={2} />
+<p style={{...C.label,marginBottom:6}}>Why it matters <span style={{color:”#334155”,textTransform:“none”,letterSpacing:0}}>(optional)</span></p>
+<textarea style={{…C.textarea,marginBottom:12}} placeholder=“Explain why this is important to you…” value={newItemRationale} onChange={e=>setNewItemRationale(e.target.value)} rows={3} />
+<div style={{display:“flex”,gap:8}}>
+<button style={{…C.secondary,flex:1}} onClick={()=>{setAddingItem(false);setNewItemText(””);setNewItemRationale(””);}}>Cancel</button>
+<button style={{...C.primary,flex:2}} onClick={addLibraryItem}>Add</button>
+</div>
+</div>
+)}
+<div style={{overflowY:“auto”,flex:1,display:“flex”,flexDirection:“column”,gap:20,paddingBottom:16}}>
+{[“rules”,“goals”].map(type=>(
+<div key={type}>
+<p style={{...C.secTitle,marginBottom:10}}>{type===“rules”?“⚖ Trading Rules”:“★ Goals & Principles”}<span style={{...C.caption,marginLeft:8}}>{selected[type].length} selected</span></p>
+{library[type].map(item=>{
+const isExp = expandedItemId===item.id;
+const ratVal = editingRationale[item.id]!==undefined ? editingRationale[item.id] : (item.rationale||””);
+return (
+<div key={item.id} style={{marginBottom:6,borderRadius:10,border:`1px solid ${isExp?"#334155":"transparent"}`,background:isExp?”#0d1b2e”:“transparent”,overflow:“hidden”}}>
+<div style={{display:“flex”,alignItems:“flex-start”,gap:10,padding:isExp?“12px 12px 8px”:“4px 0”}}>
+<button style={{width:26,height:26,borderRadius:6,border:“2px solid”,borderColor:selected[type].includes(item.id)?”#f59e0b”:”#334155”,background:selected[type].includes(item.id)?“rgba(245,158,11,0.2)”:“transparent”,cursor:“pointer”,flexShrink:0,marginTop:2,display:“flex”,alignItems:“center”,justifyContent:“center”,fontSize:14,color:”#f59e0b”}} onClick={()=>toggleSelected(type,item.id)}>{selected[type].includes(item.id)?“✓”:””}</button>
+<p style={{…C.body,flex:1,cursor:“pointer”}} onClick={()=>setExpandedItemId(isExp?null:item.id)}>{item.text}</p>
+<button style={{background:“none”,border:“none”,color:isExp?”#f59e0b”:”#475569”,cursor:“pointer”,fontSize:13,padding:“2px 6px”,flexShrink:0,fontFamily:“monospace”}} onClick={()=>setExpandedItemId(isExp?null:item.id)}>{isExp?“▲”:“▼”}</button>
+<button style={{background:“none”,border:“none”,color:”#334155”,cursor:“pointer”,fontSize:16,padding:“0 4px”,flexShrink:0}} onClick={()=>removeLibraryItem(type,item.id)}>×</button>
+</div>
+{isExp && <div style={{padding:“0 12px 14px 48px”}}>
+<p style={{…C.label,marginBottom:6,color:”#475569”}}>Why it matters</p>
+<textarea style={{…C.textarea,fontSize:13,color:”#94a3b8”,minHeight:80}} placeholder=“Write why this is important to you…” value={ratVal} rows={4}
+onChange={e=>setEditingRationale(prev=>({…prev,[item.id]:e.target.value}))}
+onBlur={()=>updateRationale(type,item.id,ratVal)} />
+<p style={{…C.caption,marginTop:5,color:”#334155”}}>Auto-saved when you tap away</p>
+</div>}
+</div>
+);
+})}
+</div>
+))}
+</div>
+<div style={{display:“flex”,flexDirection:“column”,gap:8}}>
+<p style={{…C.caption,textAlign:“center”,color:”#334155”}}>✓ Your selections are saved as default for every session</p>
+<button style={C.primary} onClick={()=>setScreen(“home”)}>Done ({totalSelected} selected)</button>
+</div>
+</div></div>
+);
+
+if (screen===“export”) return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setScreen(“history”)}>← Back</button><span style={{...C.secTitle,fontSize:14}}>Export Journal</span></div>
+<div style={{display:“flex”,gap:8,marginBottom:16}}>
+{[“text”,“csv”].map(fmt=><button key={fmt} style={{…C.moodChip,flex:1,borderColor:exportFormat===fmt?”#f59e0b”:“transparent”,color:exportFormat===fmt?”#fbbf24”:”#64748b”,textTransform:“uppercase”,letterSpacing:“0.1em”}} onClick={()=>openExport(fmt)}>{fmt===“text”?“📄 Plain Text”:“📊 CSV”}</button>)}
+</div>
+<p style={{...C.caption,marginBottom:8}}>{exportFormat===“text”?“Copy and paste into Notes or any text app.”:“Open in Excel, Numbers, or Google Sheets.”}</p>
+<textarea ref={exportRef} readOnly style={{…C.textarea,flex:1,fontFamily:“monospace”,fontSize:12,color:”#64748b”,resize:“none”,marginBottom:16,lineHeight:1.5}} value={exportText} />
+<div style={{display:“flex”,flexDirection:“column”,gap:10}}>
+<button style={{…C.primary,background:copyFlash?“linear-gradient(135deg,#16a34a,#22c55e)”:undefined}} onClick={copyToClipboard}>{copyFlash?“✓ Copied!”:“Copy to Clipboard”}</button>
+<button style={C.secondary} onClick={downloadFile}>↓ Download {exportFormat===“csv”?”.CSV”:”.TXT”}</button>
+</div>
+</div></div>
+);
+
+if (screen===“history”) {
+if (historyDetail) {
+const e = historyDetail;
+const sent = MARKET_SENTIMENTS.find(s2=>s2.id===e.sentiment);
+return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setHistoryDetail(null)}>← Back</button><span style={{...C.secTitle,fontSize:14}}>{formatDate(e.date)}</span></div>
+<div style={{overflowY:“auto”,flex:1,display:“flex”,flexDirection:“column”,gap:20}}>
+{e.thoughts && <div><p style={C.label}>💭 Thoughts</p><p style={{…C.body,lineHeight:1.6,fontStyle:“italic”,color:”#cbd5e1”}}>”{e.thoughts}”</p></div>}
+{sent && <div><p style={C.label}>📊 Market Sentiment</p><span style={{…C.chip,background:sent.color+“22”,color:sent.color}}>{sent.icon} {sent.label}</span></div>}
+{e.moods?.length>0 && <div><p style={C.label}>🎭 Moods</p><div style={{display:“flex”,flexWrap:“wrap”,gap:8}}>{e.moods.map(id=>{const m=MOODS.find(x=>x.id===id);return m?<span key={id} style={{…C.chip,background:“rgba(245,158,11,0.15)”,color:”#fbbf24”}}>{m.icon} {m.label}</span>:null;})}</div></div>}
+{e.mindsets?.length>0 && <div><p style={C.label}>🧠 Mindsets</p><div style={{display:“flex”,flexWrap:“wrap”,gap:8}}>{e.mindsets.map(id=>{const m=MINDSETS.find(x=>x.id===id);return m?<span key={id} style={{…C.chip,background:“rgba(129,140,248,0.15)”,color:”#a5b4fc”}}>{m.icon} {m.label}</span>:null;})}</div></div>}
+</div>
+</div></div>
+);
+}
+return (
+<div style={C.root}><div style={C.page}>
+<div style={C.topBar}><button style={C.ghost} onClick={()=>setScreen(“home”)}>← Back</button><span style={{...C.secTitle,fontSize:14}}>Journal History</span><button style={C.ghost} onClick={()=>openExport(“text”)}>Export ↗</button></div>
+{history.length>0 && <div style={{display:“flex”,gap:8,marginBottom:16}}><button style={{…C.moodChip,flex:1,fontSize:12}} onClick={()=>openExport(“text”)}>📄 Export as Text</button><button style={{…C.moodChip,flex:1,fontSize:12}} onClick={()=>openExport(“csv”)}>📊 Export as CSV</button></div>}
+<div style={{overflowY:“auto”,flex:1}}>
+{history.length===0 && <p style={{…C.caption,textAlign:“center”,marginTop:40}}>No entries yet.</p>}
+{history.map(dk=><button key={dk} style={C.histRow} onClick={()=>{const e=lsGet(“tr_entry_”+dk);if(e)setHistoryDetail(e);}}><span style={C.body}>{formatDate(dk)}</span><span style={C.caption}>→</span></button>)}
+</div>
+</div></div>
+);
+}
+
+const todaySent = todayEntry ? MARKET_SENTIMENTS.find(s2=>s2.id===todayEntry.sentiment) : null;
+return (
+<div style={C.root}><div style={C.page}>
+<div style={{textAlign:“center”,paddingBottom:20,borderBottom:“1px solid #1e293b”}}>
+<div style={{fontSize:36,color:”#f59e0b”,textShadow:“0 0 20px rgba(245,158,11,0.4)”,marginBottom:4}}>◈</div>
+<h1 style={C.appTitle}>TRADING RITUAL</h1>
+<p style={C.dateLabel}>{formatDate(todayKey())}</p>
+</div>
+<div style={{flex:1,display:“flex”,flexDirection:“column”,gap:14,paddingTop:16,overflowY:“auto”}}>
+{todayEntry ? (
+<div style={C.doneCard}>
+<p style={{…C.label,color:”#86efac”,marginBottom:8}}>✓ Today’s ritual complete</p>
+<div style={{display:“flex”,flexWrap:“wrap”,gap:8}}>
+{todaySent && <span style={{…C.chip,background:todaySent.color+“22”,color:todaySent.color}}>{todaySent.icon} {todaySent.label}</span>}
+{todayEntry.moods?.slice(0,3).map(id=>{const m=MOODS.find(x=>x.id===id);return m?<span key={id} style={{…C.chip,background:“rgba(245,158,11,0.12)”,color:”#fbbf24”}}>{m.icon} {m.label}</span>:null;})}
+</div>
+{todayEntry.thoughts && <p style={{…C.body,marginTop:10,color:”#94a3b8”,fontStyle:“italic”,fontSize:13}}>”{todayEntry.thoughts.slice(0,100)}{todayEntry.thoughts.length>100?”…”:””}”</p>}
+<button style={{…C.ghost,marginTop:12,padding:“6px 0”}} onClick={()=>setScreen(“journal”)}>Edit entry →</button>
+</div>
+) : (
+<div style={C.startCard}>
+<p style={{…C.label,marginBottom:4,color:”#fbbf24”}}>Ready to start?</p>
+<p style={{...C.caption,marginBottom:16}}>{totalSelected} reminder{totalSelected!==1?“s”:””} selected</p>
+<button style={C.bigStart} onClick={startReminders}>{totalSelected===0?“Select Reminders First →”:“▶  Begin Today’s Ritual”}</button>
+</div>
+)}
+<div style={{display:“grid”,gridTemplateColumns:“1fr 1fr”,gap:12}}>
+<button style={C.tile} onClick={()=>setScreen(“library”)}><span style={{fontSize:22}}>📋</span><span style={C.tileLabel}>My Rules & Goals</span><span style={C.caption}>{totalSelected} active</span></button>
+<button style={C.tile} onClick={()=>setScreen(“journal”)}><span style={{fontSize:22}}>✍️</span><span style={C.tileLabel}>Journal</span><span style={C.caption}>{todayEntry?“Today ✓”:“Not yet”}</span></button>
+<button style={C.tile} onClick={()=>setScreen(“history”)}><span style={{fontSize:22}}>📅</span><span style={C.tileLabel}>History</span><span style={C.caption}>{history.length} entries</span></button>
+{todayEntry && <button style={{…C.tile,borderColor:”#374151”}} onClick={startReminders}><span style={{fontSize:22}}>🔁</span><span style={C.tileLabel}>Re-read</span><span style={C.caption}>Reminders</span></button>}
+</div>
+</div>
+<p style={{…C.caption,textAlign:“center”,marginTop:12,fontSize:11}}>Discipline is the edge.</p>
+</div></div>
+);
+}
